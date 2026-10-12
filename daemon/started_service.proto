@@ -19,6 +19,8 @@ service StartedService {
   rpc SetClashMode(ClashMode) returns(google.protobuf.Empty) {}
 
   rpc URLTest(URLTestRequest) returns(google.protobuf.Empty) {}
+  rpc ProbeRoute(RouteProbeRequest) returns(RouteProbeResult) {}
+  rpc GetRouteCatalog(google.protobuf.Empty) returns(RouteCatalog) {}
   rpc SelectOutbound(SelectOutboundRequest) returns (google.protobuf.Empty) {}
   rpc SetGroupExpand(SetGroupExpandRequest) returns (google.protobuf.Empty) {}
 
@@ -59,6 +61,38 @@ message Version {
   int32 apiVersion = 2;
 }
 
+// A bounded test through exactly one configured outbound. Never falls back.
+message RouteProbeRequest {
+  string outboundTag = 1;
+  string targetURL = 2;
+}
+
+message RouteCatalog {
+  repeated RouteDescriptor routes = 1;
+  int64 startedAt = 2;
+}
+message RouteDescriptor {
+  string tag = 1;
+  string type = 2;
+  string bindInterface = 3;
+  string detour = 4;
+  repeated string destinations = 5;
+  bool directFallback = 6;
+}
+
+message RouteProbeResult {
+  string outboundTag = 1;
+  string targetURL = 2;
+  bool reachable = 3;
+  int64 checkedAt = 4;
+  int64 latencyMs = 5;
+  int32 httpStatus = 6;
+  string stage = 7;
+  string error = 8;
+  string exitIP = 9;
+  string country = 10;
+}
+
 message ServiceStatus {
   enum Type {
     IDLE = 0;
@@ -69,6 +103,7 @@ message ServiceStatus {
   }
   Type status = 1;
   string errorMessage = 2;
+  int64 networkEpoch = 3;
 }
 
 message SubscribeStatusRequest {

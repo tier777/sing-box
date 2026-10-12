@@ -198,3 +198,5 @@ require (
 	lukechampine.com/blake3 v1.3.0 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
+
+replace github.com/sagernet/sing-openconnect => github.com/tier777/sing-openconnect v0.1.1-0.20261012064608-cf11573716f8
