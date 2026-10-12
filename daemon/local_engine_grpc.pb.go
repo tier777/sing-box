@@ -20,10 +20,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LocalEngine_StartProfile_FullMethodName = "/daemon.LocalEngine/StartProfile"
-	LocalEngine_StopProfile_FullMethodName  = "/daemon.LocalEngine/StopProfile"
-	LocalEngine_State_FullMethodName        = "/daemon.LocalEngine/State"
-	LocalEngine_Wake_FullMethodName         = "/daemon.LocalEngine/Wake"
+	LocalEngine_StartProfile_FullMethodName      = "/daemon.LocalEngine/StartProfile"
+	LocalEngine_StopProfile_FullMethodName       = "/daemon.LocalEngine/StopProfile"
+	LocalEngine_State_FullMethodName             = "/daemon.LocalEngine/State"
+	LocalEngine_Wake_FullMethodName              = "/daemon.LocalEngine/Wake"
+	LocalEngine_GetLeakProtection_FullMethodName = "/daemon.LocalEngine/GetLeakProtection"
+	LocalEngine_SetLeakProtection_FullMethodName = "/daemon.LocalEngine/SetLeakProtection"
 )
 
 // LocalEngineClient is the client API for LocalEngine service.
@@ -36,6 +38,8 @@ type LocalEngineClient interface {
 	StopProfile(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	State(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ServiceStatus, error)
 	Wake(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetLeakProtection(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LeakProtectionStatus, error)
+	SetLeakProtection(ctx context.Context, in *LeakProtectionSettings, opts ...grpc.CallOption) (*LeakProtectionStatus, error)
 }
 
 type localEngineClient struct {
@@ -86,6 +90,26 @@ func (c *localEngineClient) Wake(ctx context.Context, in *emptypb.Empty, opts ..
 	return out, nil
 }
 
+func (c *localEngineClient) GetLeakProtection(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*LeakProtectionStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LeakProtectionStatus)
+	err := c.cc.Invoke(ctx, LocalEngine_GetLeakProtection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *localEngineClient) SetLeakProtection(ctx context.Context, in *LeakProtectionSettings, opts ...grpc.CallOption) (*LeakProtectionStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LeakProtectionStatus)
+	err := c.cc.Invoke(ctx, LocalEngine_SetLeakProtection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LocalEngineServer is the server API for LocalEngine service.
 // All implementations must embed UnimplementedLocalEngineServer
 // for forward compatibility.
@@ -96,6 +120,8 @@ type LocalEngineServer interface {
 	StopProfile(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	State(context.Context, *emptypb.Empty) (*ServiceStatus, error)
 	Wake(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	GetLeakProtection(context.Context, *emptypb.Empty) (*LeakProtectionStatus, error)
+	SetLeakProtection(context.Context, *LeakProtectionSettings) (*LeakProtectionStatus, error)
 	mustEmbedUnimplementedLocalEngineServer()
 }
 
@@ -117,6 +143,12 @@ func (UnimplementedLocalEngineServer) State(context.Context, *emptypb.Empty) (*S
 }
 func (UnimplementedLocalEngineServer) Wake(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method Wake not implemented")
+}
+func (UnimplementedLocalEngineServer) GetLeakProtection(context.Context, *emptypb.Empty) (*LeakProtectionStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetLeakProtection not implemented")
+}
+func (UnimplementedLocalEngineServer) SetLeakProtection(context.Context, *LeakProtectionSettings) (*LeakProtectionStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetLeakProtection not implemented")
 }
 func (UnimplementedLocalEngineServer) mustEmbedUnimplementedLocalEngineServer() {}
 func (UnimplementedLocalEngineServer) testEmbeddedByValue()                     {}
@@ -211,6 +243,42 @@ func _LocalEngine_Wake_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LocalEngine_GetLeakProtection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LocalEngineServer).GetLeakProtection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LocalEngine_GetLeakProtection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LocalEngineServer).GetLeakProtection(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LocalEngine_SetLeakProtection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LeakProtectionSettings)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LocalEngineServer).SetLeakProtection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LocalEngine_SetLeakProtection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LocalEngineServer).SetLeakProtection(ctx, req.(*LeakProtectionSettings))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LocalEngine_ServiceDesc is the grpc.ServiceDesc for LocalEngine service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -233,6 +301,14 @@ var LocalEngine_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Wake",
 			Handler:    _LocalEngine_Wake_Handler,
+		},
+		{
+			MethodName: "GetLeakProtection",
+			Handler:    _LocalEngine_GetLeakProtection_Handler,
+		},
+		{
+			MethodName: "SetLeakProtection",
+			Handler:    _LocalEngine_SetLeakProtection_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

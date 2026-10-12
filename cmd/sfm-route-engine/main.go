@@ -117,6 +117,30 @@ func main() {
 	engineService := daemon.NewStartedService(daemon.ServiceOptions{Context: engineContext, Handler: localPlatform{}, LogMaxLines: 500})
 	defer engineService.Close()
 	control := &daemon.LocalEngineController{Service: engineService}
+	if !*testMode {
+		control.Protection = &daemon.LeakProtection{Guard: newLeakGuard(*uid, *root), StateDir: *root}
+		// A previous helper that was armed (crash, reinstall, reboot) blocks
+		// first, then brings the same profile back.
+		if profile := control.Protection.Load(); profile != "" {
+			go func() {
+				if _, err := control.StartProfile(ctx, &daemon.LocalProfileRequest{ConfigContent: profile}); err != nil {
+					fmt.Fprintln(os.Stderr, "restore armed profile:", err)
+				}
+			}()
+		}
+		go func() {
+			ticker := time.NewTicker(3 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					control.ReconcileProtection()
+				}
+			}
+		}()
+	}
 	server := daemon.NewServer(engineService, "") // access is enforced by the Unix socket
 	daemon.RegisterLocalEngineServer(server, control)
 	go func() {

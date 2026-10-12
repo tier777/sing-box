@@ -16,9 +16,31 @@ import (
 
 type LocalEngineController struct {
 	UnimplementedLocalEngineServer
-	Service    *StartedService
+	Service *StartedService
+	// Nil when the platform has no leak guard.
+	Protection *LeakProtection
 	wakeAccess sync.Mutex
 	lastWake   time.Time
+}
+
+func (e *LocalEngineController) started() bool {
+	e.Service.serviceAccess.RLock()
+	defer e.Service.serviceAccess.RUnlock()
+	return e.Service.serviceStatus.Status == ServiceStatus_STARTED
+}
+
+// ReconcileProtection moves the guard between blocking and allowing the
+// tunnel. The helper calls it periodically; lifecycle RPCs call it directly.
+func (e *LocalEngineController) ReconcileProtection() {
+	if e.Protection == nil {
+		return
+	}
+	started := e.started()
+	tunnel := ""
+	if started {
+		tunnel = TunnelInterface(e.Protection.Config())
+	}
+	e.Protection.Reconcile(started, tunnel)
 }
 
 func (e *LocalEngineController) StartProfile(ctx context.Context, r *LocalProfileRequest) (*emptypb.Empty, error) {
@@ -32,7 +54,23 @@ func (e *LocalEngineController) StartProfile(ctx context.Context, r *LocalProfil
 	if err := e.Service.CheckConfig(ctx, r.ConfigContent); err != nil {
 		return nil, err
 	}
-	if err := e.Service.StartOrReloadService(ctx, r.ConfigContent, nil); err != nil {
+	if e.Protection != nil {
+		if err := e.Protection.BeforeStart(r.ConfigContent); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, "leak protection could not be enabled: "+err.Error())
+		}
+	}
+	err := e.Service.StartOrReloadService(ctx, r.ConfigContent, nil)
+	if e.Protection != nil {
+		// The TUN interface can appear slightly after the service reports started.
+		for attempt := 0; attempt < 20; attempt++ {
+			e.ReconcileProtection()
+			if !e.Protection.Status().Blocking || !e.started() {
+				break
+			}
+			time.Sleep(150 * time.Millisecond)
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
@@ -121,11 +159,42 @@ func ValidateLocalProfile(content string) error {
 	}
 	return walk(config, "")
 }
+
+// StopProfile is the only lifecycle call that disarms leak protection: the
+// user asked for the VPN to be off, so direct traffic is now intended.
 func (e *LocalEngineController) StopProfile(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
-	if err := e.Service.CloseService(); err != nil {
-		return nil, err
+	closeErr := e.Service.CloseService()
+	if e.Protection != nil {
+		if err := e.Protection.Stopped(); err != nil {
+			return nil, status.Error(codes.Internal, "VPN stopped, but leak protection could not be removed: "+err.Error())
+		}
+	}
+	if closeErr != nil {
+		return nil, closeErr
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func (e *LocalEngineController) GetLeakProtection(context.Context, *emptypb.Empty) (*LeakProtectionStatus, error) {
+	if e.Protection == nil {
+		return &LeakProtectionStatus{}, nil
+	}
+	return e.Protection.Status(), nil
+}
+
+func (e *LocalEngineController) SetLeakProtection(_ context.Context, r *LeakProtectionSettings) (*LeakProtectionStatus, error) {
+	if e.Protection == nil {
+		return nil, status.Error(codes.Unimplemented, "leak protection is not available on this platform")
+	}
+	started := e.started()
+	tunnel := ""
+	if started {
+		tunnel = TunnelInterface(e.Protection.Config())
+	}
+	if err := e.Protection.Set(r.GetEnabled(), started, tunnel, ""); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+	return e.Protection.Status(), nil
 }
 func (e *LocalEngineController) State(context.Context, *emptypb.Empty) (*ServiceStatus, error) {
 	e.Service.serviceAccess.RLock()

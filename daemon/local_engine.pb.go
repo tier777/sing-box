@@ -66,18 +66,161 @@ func (x *LocalProfileRequest) GetConfigContent() string {
 	return ""
 }
 
+// While armed, the controlling user's traffic may leave the Mac only through
+// this engine's tunnel (plus the local network). Only StopProfile disarms it.
+type LeakProtectionSettings struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LeakProtectionSettings) Reset() {
+	*x = LeakProtectionSettings{}
+	mi := &file_daemon_local_engine_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LeakProtectionSettings) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LeakProtectionSettings) ProtoMessage() {}
+
+func (x *LeakProtectionSettings) ProtoReflect() protoreflect.Message {
+	mi := &file_daemon_local_engine_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LeakProtectionSettings.ProtoReflect.Descriptor instead.
+func (*LeakProtectionSettings) Descriptor() ([]byte, []int) {
+	return file_daemon_local_engine_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *LeakProtectionSettings) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+type LeakProtectionStatus struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Supported bool                   `protobuf:"varint,1,opt,name=supported,proto3" json:"supported,omitempty"`
+	Enabled   bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// A profile was started and has not been stopped by the user.
+	Armed bool `protobuf:"varint,3,opt,name=armed,proto3" json:"armed,omitempty"`
+	// Armed without a live tunnel: the user's internet traffic is blocked.
+	Blocking      bool   `protobuf:"varint,4,opt,name=blocking,proto3" json:"blocking,omitempty"`
+	Tunnel        string `protobuf:"bytes,5,opt,name=tunnel,proto3" json:"tunnel,omitempty"`
+	Error         string `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LeakProtectionStatus) Reset() {
+	*x = LeakProtectionStatus{}
+	mi := &file_daemon_local_engine_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LeakProtectionStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LeakProtectionStatus) ProtoMessage() {}
+
+func (x *LeakProtectionStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_daemon_local_engine_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LeakProtectionStatus.ProtoReflect.Descriptor instead.
+func (*LeakProtectionStatus) Descriptor() ([]byte, []int) {
+	return file_daemon_local_engine_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *LeakProtectionStatus) GetSupported() bool {
+	if x != nil {
+		return x.Supported
+	}
+	return false
+}
+
+func (x *LeakProtectionStatus) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *LeakProtectionStatus) GetArmed() bool {
+	if x != nil {
+		return x.Armed
+	}
+	return false
+}
+
+func (x *LeakProtectionStatus) GetBlocking() bool {
+	if x != nil {
+		return x.Blocking
+	}
+	return false
+}
+
+func (x *LeakProtectionStatus) GetTunnel() string {
+	if x != nil {
+		return x.Tunnel
+	}
+	return ""
+}
+
+func (x *LeakProtectionStatus) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_daemon_local_engine_proto protoreflect.FileDescriptor
 
 const file_daemon_local_engine_proto_rawDesc = "" +
 	"\n" +
 	"\x19daemon/local_engine.proto\x12\x06daemon\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cdaemon/started_service.proto\";\n" +
 	"\x13LocalProfileRequest\x12$\n" +
-	"\rconfigContent\x18\x01 \x01(\tR\rconfigContent2\x81\x02\n" +
+	"\rconfigContent\x18\x01 \x01(\tR\rconfigContent\"2\n" +
+	"\x16LeakProtectionSettings\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"\xae\x01\n" +
+	"\x14LeakProtectionStatus\x12\x1c\n" +
+	"\tsupported\x18\x01 \x01(\bR\tsupported\x12\x18\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\x12\x14\n" +
+	"\x05armed\x18\x03 \x01(\bR\x05armed\x12\x1a\n" +
+	"\bblocking\x18\x04 \x01(\bR\bblocking\x12\x16\n" +
+	"\x06tunnel\x18\x05 \x01(\tR\x06tunnel\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error2\x9f\x03\n" +
 	"\vLocalEngine\x12C\n" +
 	"\fStartProfile\x12\x1b.daemon.LocalProfileRequest\x1a\x16.google.protobuf.Empty\x12=\n" +
 	"\vStopProfile\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x126\n" +
 	"\x05State\x12\x16.google.protobuf.Empty\x1a\x15.daemon.ServiceStatus\x126\n" +
-	"\x04Wake\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.EmptyB%Z#github.com/sagernet/sing-box/daemonb\x06proto3"
+	"\x04Wake\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x12I\n" +
+	"\x11GetLeakProtection\x12\x16.google.protobuf.Empty\x1a\x1c.daemon.LeakProtectionStatus\x12Q\n" +
+	"\x11SetLeakProtection\x12\x1e.daemon.LeakProtectionSettings\x1a\x1c.daemon.LeakProtectionStatusB%Z#github.com/sagernet/sing-box/daemonb\x06proto3"
 
 var (
 	file_daemon_local_engine_proto_rawDescOnce sync.Once
@@ -91,23 +234,29 @@ func file_daemon_local_engine_proto_rawDescGZIP() []byte {
 	return file_daemon_local_engine_proto_rawDescData
 }
 
-var file_daemon_local_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_daemon_local_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_daemon_local_engine_proto_goTypes = []any{
-	(*LocalProfileRequest)(nil), // 0: daemon.LocalProfileRequest
-	(*emptypb.Empty)(nil),       // 1: google.protobuf.Empty
-	(*ServiceStatus)(nil),       // 2: daemon.ServiceStatus
+	(*LocalProfileRequest)(nil),    // 0: daemon.LocalProfileRequest
+	(*LeakProtectionSettings)(nil), // 1: daemon.LeakProtectionSettings
+	(*LeakProtectionStatus)(nil),   // 2: daemon.LeakProtectionStatus
+	(*emptypb.Empty)(nil),          // 3: google.protobuf.Empty
+	(*ServiceStatus)(nil),          // 4: daemon.ServiceStatus
 }
 var file_daemon_local_engine_proto_depIdxs = []int32{
 	0, // 0: daemon.LocalEngine.StartProfile:input_type -> daemon.LocalProfileRequest
-	1, // 1: daemon.LocalEngine.StopProfile:input_type -> google.protobuf.Empty
-	1, // 2: daemon.LocalEngine.State:input_type -> google.protobuf.Empty
-	1, // 3: daemon.LocalEngine.Wake:input_type -> google.protobuf.Empty
-	1, // 4: daemon.LocalEngine.StartProfile:output_type -> google.protobuf.Empty
-	1, // 5: daemon.LocalEngine.StopProfile:output_type -> google.protobuf.Empty
-	2, // 6: daemon.LocalEngine.State:output_type -> daemon.ServiceStatus
-	1, // 7: daemon.LocalEngine.Wake:output_type -> google.protobuf.Empty
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
+	3, // 1: daemon.LocalEngine.StopProfile:input_type -> google.protobuf.Empty
+	3, // 2: daemon.LocalEngine.State:input_type -> google.protobuf.Empty
+	3, // 3: daemon.LocalEngine.Wake:input_type -> google.protobuf.Empty
+	3, // 4: daemon.LocalEngine.GetLeakProtection:input_type -> google.protobuf.Empty
+	1, // 5: daemon.LocalEngine.SetLeakProtection:input_type -> daemon.LeakProtectionSettings
+	3, // 6: daemon.LocalEngine.StartProfile:output_type -> google.protobuf.Empty
+	3, // 7: daemon.LocalEngine.StopProfile:output_type -> google.protobuf.Empty
+	4, // 8: daemon.LocalEngine.State:output_type -> daemon.ServiceStatus
+	3, // 9: daemon.LocalEngine.Wake:output_type -> google.protobuf.Empty
+	2, // 10: daemon.LocalEngine.GetLeakProtection:output_type -> daemon.LeakProtectionStatus
+	2, // 11: daemon.LocalEngine.SetLeakProtection:output_type -> daemon.LeakProtectionStatus
+	6, // [6:12] is the sub-list for method output_type
+	0, // [0:6] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -125,7 +274,7 @@ func file_daemon_local_engine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_daemon_local_engine_proto_rawDesc), len(file_daemon_local_engine_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

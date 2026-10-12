@@ -10,5 +10,21 @@ service LocalEngine {
   rpc StopProfile(google.protobuf.Empty) returns(google.protobuf.Empty);
   rpc State(google.protobuf.Empty) returns(ServiceStatus);
   rpc Wake(google.protobuf.Empty) returns(google.protobuf.Empty);
+  rpc GetLeakProtection(google.protobuf.Empty) returns(LeakProtectionStatus);
+  rpc SetLeakProtection(LeakProtectionSettings) returns(LeakProtectionStatus);
 }
 message LocalProfileRequest { string configContent = 1; }
+
+// While armed, the controlling user's traffic may leave the Mac only through
+// this engine's tunnel (plus the local network). Only StopProfile disarms it.
+message LeakProtectionSettings { bool enabled = 1; }
+message LeakProtectionStatus {
+  bool supported = 1;
+  bool enabled = 2;
+  // A profile was started and has not been stopped by the user.
+  bool armed = 3;
+  // Armed without a live tunnel: the user's internet traffic is blocked.
+  bool blocking = 4;
+  string tunnel = 5;
+  string error = 6;
+}

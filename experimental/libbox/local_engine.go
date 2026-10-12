@@ -65,3 +65,44 @@ func (c *CommandClient) LocalEngineWake() error {
 	_, err = client.Wake(ctx, &emptypb.Empty{})
 	return err
 }
+
+type LocalEngineLeakProtection struct {
+	Supported bool
+	Enabled   bool
+	Armed     bool
+	Blocking  bool
+	Tunnel    string
+	Error     string
+}
+
+func newLocalEngineLeakProtection(value *daemon.LeakProtectionStatus) *LocalEngineLeakProtection {
+	return &LocalEngineLeakProtection{Supported: value.Supported, Enabled: value.Enabled, Armed: value.Armed, Blocking: value.Blocking, Tunnel: value.Tunnel, Error: value.Error}
+}
+
+func (c *CommandClient) GetLocalEngineLeakProtection() (*LocalEngineLeakProtection, error) {
+	client, parent, err := c.localEngineClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	defer cancel()
+	value, err := client.GetLeakProtection(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, err
+	}
+	return newLocalEngineLeakProtection(value), nil
+}
+
+func (c *CommandClient) SetLocalEngineLeakProtection(enabled bool) (*LocalEngineLeakProtection, error) {
+	client, parent, err := c.localEngineClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	value, err := client.SetLeakProtection(ctx, &daemon.LeakProtectionSettings{Enabled: enabled})
+	if err != nil {
+		return nil, err
+	}
+	return newLocalEngineLeakProtection(value), nil
+}
