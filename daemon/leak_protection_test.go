@@ -83,7 +83,7 @@ func TestLeakProtectionSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.Reconcile(true, "utun3")
-	if s := p.Status(); s.Armed || len(guard.calls) != 1 || guard.calls[0] != "release" {
+	if s := p.Status(); s.Armed || len(guard.calls) != 0 {
 		t.Fatalf("disabled protection must not touch pf: %+v %v", s, guard.calls)
 	}
 	// Turning it on while connected arms immediately with the live tunnel.
@@ -109,5 +109,25 @@ func TestLeakProtectionRefusesStartWhenGuardFails(t *testing.T) {
 	}
 	if s := p.Status(); s.Armed || s.Error == "" {
 		t.Fatalf("failure must be reported: %+v", s)
+	}
+}
+
+func TestFailedGuardIsNotReportedAsBlocking(t *testing.T) {
+	guard := &fakeGuard{}
+	p := &LeakProtection{Guard: guard, StateDir: t.TempDir()}
+	p.Load()
+	if err := p.BeforeStart("{}"); err != nil {
+		t.Fatal(err)
+	}
+	guard.failApply = true
+	p.Reconcile(false, "")
+	// The earlier block is still loaded in pf, so it still blocks.
+	if s := p.Status(); !s.Blocking || s.Error == "" {
+		t.Fatalf("a failed update must keep the loaded block and report the error: %+v", s)
+	}
+	restarted := &LeakProtection{Guard: &fakeGuard{failApply: true}, StateDir: p.StateDir}
+	restarted.Load()
+	if s := restarted.Status(); s.Blocking || !s.Armed || s.Error == "" {
+		t.Fatalf("rules that never loaded must not be reported as blocking: %+v", s)
 	}
 }

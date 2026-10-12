@@ -90,9 +90,13 @@ func (p *LeakProtection) BeforeStart(config string) error {
 func (p *LeakProtection) Stopped() error {
 	p.access.Lock()
 	defer p.access.Unlock()
+	wasActive := p.state.Armed || p.applied
 	p.state.Armed = false
 	p.config = ""
-	err := p.releaseLocked()
+	var err error
+	if wasActive {
+		err = p.releaseLocked()
+	}
 	return errors.Join(err, p.saveLocked())
 }
 
@@ -101,9 +105,13 @@ func (p *LeakProtection) Set(enabled bool, running bool, tunnel string, config s
 	defer p.access.Unlock()
 	p.state.Enabled = enabled
 	if !enabled {
+		var err error
+		if p.state.Armed || p.applied {
+			err = p.releaseLocked()
+		}
 		p.state.Armed = false
 		p.config = ""
-		return errors.Join(p.releaseLocked(), p.saveLocked())
+		return errors.Join(err, p.saveLocked())
 	}
 	if running {
 		if err := p.Guard.Supported(); err != nil {
@@ -145,9 +153,11 @@ func (p *LeakProtection) Status() *LeakProtectionStatus {
 		Supported: p.Guard.Supported() == nil,
 		Enabled:   p.state.Enabled,
 		Armed:     p.state.Armed,
-		Blocking:  p.state.Armed && p.tunnel == "",
-		Tunnel:    p.tunnel,
-		Error:     p.lastErr,
+		// Only rules that are actually loaded block anything; a failed
+		// guard is reported through Error, never as protection.
+		Blocking: p.state.Armed && p.applied && p.tunnel == "",
+		Tunnel:   p.tunnel,
+		Error:    p.lastErr,
 	}
 	return status
 }
