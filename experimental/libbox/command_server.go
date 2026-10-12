@@ -274,7 +274,7 @@ func (s *CommandServer) Wake() {
 	if recorder != nil {
 		recorder.RecordDeviceWake()
 	}
-	if !C.IsAndroid {
+	if !(C.IsAndroid || C.IsDarwin && !C.IsIos && !C.IsTvOS) {
 		return
 	}
 	instance := s.StartedService.Instance()
@@ -282,6 +282,11 @@ func (s *CommandServer) Wake() {
 		return
 	}
 	instance.PauseManager().DeviceWake()
+	// macOS can keep QUIC sockets and userspace VPN sessions across sleep.
+	// The default interface may be unchanged, so no path-change callback fires.
+	if C.IsDarwin && !C.IsIos && !C.IsTvOS {
+		s.ResetNetwork()
+	}
 }
 
 func (s *CommandServer) WakeNow() {

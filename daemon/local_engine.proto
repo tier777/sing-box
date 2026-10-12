@@ -1,0 +1,14 @@
+syntax = "proto3";
+package daemon;
+option go_package = "github.com/sagernet/sing-box/daemon";
+import "google/protobuf/empty.proto";
+import "daemon/started_service.proto";
+
+// Registered ONLY by the local root helper, on a per-user Unix socket.
+service LocalEngine {
+  rpc StartProfile(LocalProfileRequest) returns(google.protobuf.Empty);
+  rpc StopProfile(google.protobuf.Empty) returns(google.protobuf.Empty);
+  rpc State(google.protobuf.Empty) returns(ServiceStatus);
+  rpc Wake(google.protobuf.Empty) returns(google.protobuf.Empty);
+}
+message LocalProfileRequest { string configContent = 1; }

@@ -24,6 +24,7 @@ import (
 )
 
 type Instance struct {
+	routeCatalog          *RouteCatalog
 	ctx                   context.Context
 	cancel                context.CancelFunc
 	instance              *box.Box
@@ -120,6 +121,7 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 	urlTestHistoryStorage := urltest.NewHistoryStorage()
 	ctx = service.ContextWithPtr(ctx, urlTestHistoryStorage)
 	i := &Instance{
+		routeCatalog:          newRouteCatalog(options),
 		ctx:                   ctx,
 		cancel:                cancel,
 		urlTestHistoryStorage: urlTestHistoryStorage,
