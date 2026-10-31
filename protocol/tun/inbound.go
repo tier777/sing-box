@@ -510,6 +510,16 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	return nil
 }
 
+// TunnelInterfaceName reports the actual device, rather than finding a device
+// by its address (another VPN may use the same private TUN address).
+// The caller must synchronize with this inbound's start/close lifecycle.
+func (t *Inbound) TunnelInterfaceName() (string, error) {
+	if t.tunIf == nil {
+		return "", E.New("TUN device is not open")
+	}
+	return t.tunIf.Name()
+}
+
 func (t *Inbound) updateRouteAddressSet(it adapter.RuleSet) {
 	t.routeAddressSet = common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
 	t.routeExcludeAddressSet = common.FlatMap(t.routeExcludeRuleSet, adapter.RuleSet.ExtractIPSet)

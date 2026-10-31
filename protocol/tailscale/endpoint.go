@@ -55,6 +55,7 @@ import (
 	tsTUN "github.com/sagernet/tailscale/net/tstun"
 	"github.com/sagernet/tailscale/tailcfg"
 	"github.com/sagernet/tailscale/tsnet"
+	"github.com/sagernet/tailscale/types/key"
 	"github.com/sagernet/tailscale/types/nettype"
 	"github.com/sagernet/tailscale/version"
 	"github.com/sagernet/tailscale/wgengine"
@@ -107,6 +108,7 @@ type Endpoint struct {
 
 	acceptRoutes               bool
 	exitNode                   string
+	exitExpected               atomic.Pointer[key.NodePublic]
 	exitNodeAllowLANAccess     bool
 	advertiseRoutes            []netip.Prefix
 	advertiseExitNode          bool
@@ -571,6 +573,7 @@ func (t *Endpoint) watchState(ctx context.Context) {
 			running = status.BackendState == ipn.Running.String()
 			switch status.BackendState {
 			case ipn.NoState.String(), ipn.NeedsLogin.String():
+				t.exitExpected.Store(nil)
 				if t.exitNode != "" {
 					exitNodePending = true
 				}
@@ -625,6 +628,7 @@ func (t *Endpoint) editPrefs(sshEnabled bool) error {
 			RunSSH:          sshEnabled,
 		},
 		RouteAllSet:                   true,
+		ExitNodeIDSet:                 true,
 		ExitNodeIPSet:                 true,
 		AdvertiseRoutesSet:            true,
 		RunSSHSet:                     true,
@@ -652,22 +656,33 @@ func (t *Endpoint) applyExitNode() error {
 	if err != nil {
 		return err
 	}
+	peer, err := configuredExitPeer(t.exitNode, status)
+	if err != nil {
+		t.exitExpected.Store(nil)
+		return err
+	}
+	expected := peer.PublicKey
+	t.exitExpected.Store(&expected)
 	perfs := &ipn.MaskedPrefs{
 		Prefs: ipn.Prefs{
+			ExitNodeID:             peer.ID,
 			ExitNodeAllowLANAccess: t.exitNodeAllowLANAccess,
 		},
+		ExitNodeIDSet:             true,
 		ExitNodeIPSet:             true,
 		ExitNodeAllowLANAccessSet: true,
 	}
-	err = perfs.SetExitNodeIP(t.exitNode, status)
-	if err != nil {
-		return err
-	}
 	_, err = t.server.ExportLocalBackend().EditPrefs(perfs)
+	if err != nil {
+		t.exitExpected.Store(nil)
+	}
 	return err
 }
 
 func (t *Endpoint) SetTailscaleExitNode(ctx context.Context, stableID string) error {
+	if t.exitNode != "" {
+		return E.New("configured exit node must be changed by reloading the protected profile")
+	}
 	if !t.started.Load() {
 		return E.New("Tailscale is not ready yet")
 	}
@@ -770,7 +785,13 @@ func (t *Endpoint) DialContext(ctx context.Context, network string, destination 
 		return N.DialSerial(ctx, t, network, destination, destinationAddresses)
 	}
 	if t.systemDialer != nil {
+		if !t.allowExitDestination(destination.Addr) {
+			return nil, E.New("selected exit node is not ready")
+		}
 		return t.systemDialer.DialContext(ctx, network, destination)
+	}
+	if !t.allowExitDestination(destination.Addr) {
+		return nil, E.New("selected exit node is not ready")
 	}
 	addr4, addr6 := t.server.TailscaleIPs()
 	remoteAddr := tcpip.FullAddress{
@@ -820,6 +841,9 @@ func (t *Endpoint) DialContext(ctx context.Context, network string, destination 
 func (t *Endpoint) listenPacketWithAddress(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
 	if !t.started.Load() {
 		return nil, E.New("Tailscale is not ready yet")
+	}
+	if !t.allowExitDestination(destination.Addr) {
+		return nil, E.New("selected exit node is not ready")
 	}
 	if t.systemDialer != nil {
 		return t.systemDialer.ListenPacket(ctx, destination)

@@ -2,12 +2,8 @@ package daemon
 
 import (
 	"encoding/json"
-	"errors"
-	"net"
-	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 )
 
@@ -26,9 +22,9 @@ type leakState struct {
 	Armed   bool `json:"armed"`
 }
 
-// LeakProtection arms on every profile start and disarms only on an explicit
-// stop or when the user turns the setting off. Reloads, profile switches,
-// engine failures, sleep and helper restarts all keep it armed.
+// LeakProtection arms on every profile start. Stopping the VPN keeps the
+// firewall armed; only disabling protection releases it. Reloads, profile
+// switches, engine failures, sleep and helper restarts also keep it armed.
 type LeakProtection struct {
 	Guard    LeakGuard
 	StateDir string
@@ -86,45 +82,57 @@ func (p *LeakProtection) BeforeStart(config string) error {
 	return p.saveLocked()
 }
 
-// Stopped is called only for an explicit user stop.
+// Stopped blocks before the tunnel is removed. Forget the recovery profile so
+// a helper restart restores the block without restarting a deliberately stopped VPN.
 func (p *LeakProtection) Stopped() error {
 	p.access.Lock()
 	defer p.access.Unlock()
-	wasActive := p.state.Armed || p.applied
-	p.state.Armed = false
-	p.config = ""
-	var err error
-	if wasActive {
-		err = p.releaseLocked()
+	if p.state.Enabled {
+		if err := p.Guard.Supported(); err != nil {
+			p.lastErr = err.Error()
+			return err
+		}
+		if err := p.applyLocked(""); err != nil {
+			return err
+		}
+		p.state.Armed = true
+	} else if p.applied {
+		if err := p.releaseLocked(); err != nil {
+			return err
+		}
 	}
-	return errors.Join(err, p.saveLocked())
+	p.config = ""
+	return p.saveLocked()
 }
 
 func (p *LeakProtection) Set(enabled bool, running bool, tunnel string, config string) error {
 	p.access.Lock()
 	defer p.access.Unlock()
-	p.state.Enabled = enabled
 	if !enabled {
-		var err error
 		if p.state.Armed || p.applied {
-			err = p.releaseLocked()
+			if err := p.releaseLocked(); err != nil {
+				return err
+			}
 		}
+		p.state.Enabled = false
 		p.state.Armed = false
 		p.config = ""
-		return errors.Join(err, p.saveLocked())
+		return p.saveLocked()
 	}
-	if running {
-		if err := p.Guard.Supported(); err != nil {
-			p.lastErr = err.Error()
-			return errors.Join(err, p.saveLocked())
-		}
-		p.state.Armed = true
-		if config != "" {
-			p.config = config
-		}
-		if err := p.applyLocked(tunnel); err != nil {
-			return errors.Join(err, p.saveLocked())
-		}
+	if err := p.Guard.Supported(); err != nil {
+		p.lastErr = err.Error()
+		return err
+	}
+	if !running {
+		tunnel = ""
+	}
+	if err := p.applyLocked(tunnel); err != nil {
+		return err
+	}
+	p.state.Enabled = true
+	p.state.Armed = true
+	if config != "" {
+		p.config = config
 	}
 	return p.saveLocked()
 }
@@ -216,68 +224,4 @@ func writePrivateFile(path string, content []byte) error {
 		return err
 	}
 	return os.Rename(temporary, path)
-}
-
-// TunnelInterface finds the interface carrying the profile's TUN address.
-func TunnelInterface(config string) string {
-	var profile struct {
-		Inbounds []struct {
-			Type    string `json:"type"`
-			Address any    `json:"address"`
-		} `json:"inbounds"`
-	}
-	if json.Unmarshal([]byte(config), &profile) != nil {
-		return ""
-	}
-	var wanted []netip.Addr
-	for _, inbound := range profile.Inbounds {
-		if inbound.Type != "tun" {
-			continue
-		}
-		var addresses []string
-		switch value := inbound.Address.(type) {
-		case string:
-			addresses = append(addresses, value)
-		case []any:
-			for _, item := range value {
-				if text, ok := item.(string); ok {
-					addresses = append(addresses, text)
-				}
-			}
-		}
-		for _, address := range addresses {
-			if prefix, err := netip.ParsePrefix(address); err == nil {
-				wanted = append(wanted, prefix.Addr())
-			}
-		}
-	}
-	if len(wanted) == 0 {
-		return ""
-	}
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return ""
-	}
-	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || !strings.HasPrefix(iface.Name, "utun") {
-			continue
-		}
-		addresses, _ := iface.Addrs()
-		for _, address := range addresses {
-			ipNet, ok := address.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ip, ok := netip.AddrFromSlice(ipNet.IP)
-			if !ok {
-				continue
-			}
-			for _, candidate := range wanted {
-				if ip.Unmap() == candidate {
-					return iface.Name
-				}
-			}
-		}
-	}
-	return ""
 }

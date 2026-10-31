@@ -23,11 +23,22 @@ import (
 // DNS/routes. The user starts a selected profile from the unprivileged app.
 func main() {
 	check := flag.String("check-profile", "", "validate a profile without installing or starting a tunnel")
+	checkPF := flag.Bool("check-firewall", false, "parse kill-switch rules without loading them")
 	uid := flag.Int("uid", -1, "Mac user allowed to control this engine")
 	root := flag.String("state-dir", "/Library/Application Support/SFMRoutes/State", "private engine state")
 	socket := flag.String("socket-dir", "", "per-user control socket directory")
 	testMode := flag.Bool("unprivileged-test", false, "isolated test, does not grant TUN privileges")
 	flag.Parse()
+	if *checkPF {
+		if *uid <= 0 {
+			fatal(errors.New("a non-root controller UID is required"))
+		}
+		if err := checkFirewall(*uid); err != nil {
+			fatal(err)
+		}
+		fmt.Println("kill-switch rules valid (not loaded)")
+		return
+	}
 	if *check != "" {
 		content, err := os.ReadFile(*check)
 		if err != nil {

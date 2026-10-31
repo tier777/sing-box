@@ -67,7 +67,7 @@ func (x *LocalProfileRequest) GetConfigContent() string {
 }
 
 // While armed, the controlling user's traffic may leave the Mac only through
-// this engine's tunnel (plus the local network). Only StopProfile disarms it.
+// this engine's tunnel (plus the local network). Only disabling protection disarms it.
 type LeakProtectionSettings struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
@@ -116,7 +116,7 @@ type LeakProtectionStatus struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Supported bool                   `protobuf:"varint,1,opt,name=supported,proto3" json:"supported,omitempty"`
 	Enabled   bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// A profile was started and has not been stopped by the user.
+	// Protection remains armed until explicitly disabled by the user.
 	Armed bool `protobuf:"varint,3,opt,name=armed,proto3" json:"armed,omitempty"`
 	// Armed without a live tunnel: the user's internet traffic is blocked.
 	Blocking      bool   `protobuf:"varint,4,opt,name=blocking,proto3" json:"blocking,omitempty"`

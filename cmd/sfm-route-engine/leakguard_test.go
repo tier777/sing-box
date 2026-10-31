@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/netip"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -23,9 +24,28 @@ func TestPFRules(t *testing.T) {
 	}
 	for _, rules := range []string{allow, block} {
 		lines := strings.Split(strings.TrimSpace(rules), "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "pass ") && !strings.HasSuffix(line, " no state") {
+				t.Fatalf("a pass rule must not leave a floating state after tunnel removal: %s", line)
+			}
+		}
 		if last := lines[len(lines)-1]; last != "block return out quick proto { tcp udp } user { 501 65 }" {
 			t.Errorf("the user block must be the final rule, got %q", last)
 		}
+	}
+}
+
+func TestStateResetIsScopedToConcreteHostAddresses(t *testing.T) {
+	addresses := []netip.Addr{
+		netip.MustParseAddr("192.168.1.7"), netip.MustParseAddr("100.111.11.30"),
+		netip.MustParseAddr("2001:db8::7"), netip.MustParseAddr("192.168.1.7"),
+		netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("::1"),
+		netip.MustParseAddr("0.0.0.0"), netip.MustParseAddr("::"),
+		netip.MustParseAddr("224.0.0.1"), {},
+	}
+	want := [][]string{{"-k", "192.168.1.7"}, {"-k", "100.111.11.30"}, {"-k", "2001:db8::7"}}
+	if got := stateResetCommands(addresses); !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected state reset scope: %v", got)
 	}
 }
 

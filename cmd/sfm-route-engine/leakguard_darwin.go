@@ -25,6 +25,19 @@ const (
 
 var pfTokenPattern = regexp.MustCompile(`Token\s*:\s*(\d+)`)
 
+func checkFirewall(uid int) error {
+	guard := newLeakGuard(uid, "")
+	if err := guard.Supported(); err != nil {
+		return err
+	}
+	for _, tunnel := range []string{"", "lo0"} {
+		if _, err := pfctl([]byte(renderPFRules(guard.users, tunnel, localNetworks())), "-n", "-f", "-"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // pfGuard keeps its rules in a child of the system "com.apple/*" anchor and
 // holds its own pf enable reference, so other tools releasing theirs do not
 // switch protection off.
@@ -80,6 +93,13 @@ func (g *pfGuard) Apply(tunnel string) error {
 	if _, err = pfctl([]byte(rules), "-a", pfAnchor, "-f", "-"); err != nil {
 		return err
 	}
+	if g.loaded == "" || enabled {
+		for _, command := range stateResetCommands(localStateAddresses()) {
+			if _, err = pfctl(nil, command...); err != nil {
+				return fmt.Errorf("could not invalidate pre-existing network states: %w", err)
+			}
+		}
+	}
 	g.loaded = rules
 	return nil
 }
@@ -87,9 +107,9 @@ func (g *pfGuard) Apply(tunnel string) error {
 func (g *pfGuard) Release() error {
 	g.access.Lock()
 	defer g.access.Unlock()
-	var result error
 	if _, err := pfctl(nil, "-a", pfAnchor, "-F", "rules"); err != nil {
-		result = err
+		// Keep our enable reference and state if rules could not be removed.
+		return err
 	}
 	g.loaded = ""
 	if g.token != "" {
@@ -98,7 +118,7 @@ func (g *pfGuard) Release() error {
 		g.token = ""
 		_ = os.Remove(g.tokenPath)
 	}
-	return result
+	return nil
 }
 
 // enableLocked takes this helper's pf reference when it has none, or when pf
@@ -130,6 +150,12 @@ func (g *pfGuard) ensureMainAnchorLocked() error {
 	output, err := pfctl(nil, "-s", "rules")
 	if err == nil && bytes.Contains(output, []byte(pfMainAnchor)) {
 		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(bytes.TrimSpace(output)) != 0 {
+		return errors.New("existing pf rules have no system anchor; refusing to replace another firewall's configuration")
 	}
 	system, readErr := os.ReadFile(pfSystemConf)
 	if readErr != nil || !bytes.Contains(system, []byte(pfMainAnchor)) {

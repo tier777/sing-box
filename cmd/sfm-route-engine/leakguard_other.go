@@ -7,6 +7,7 @@ import "errors"
 type unsupportedGuard struct{}
 
 func newLeakGuard(int, string) unsupportedGuard { return unsupportedGuard{} }
+func checkFirewall(int) error                   { return unsupportedGuard{}.Supported() }
 
 func (unsupportedGuard) Supported() error {
 	return errors.New("leak protection is implemented only for macOS")

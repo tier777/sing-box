@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+
+	"github.com/sagernet/sing-box/adapter"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -19,8 +22,11 @@ type LocalEngineController struct {
 	Service *StartedService
 	// Nil when the platform has no leak guard.
 	Protection *LeakProtection
-	wakeAccess sync.Mutex
-	lastWake   time.Time
+	// Serialize firewall transitions with local lifecycle operations so the
+	// periodic reconciler cannot allow the old tunnel during a stop/reload.
+	protectionAccess sync.Mutex
+	wakeAccess       sync.Mutex
+	lastWake         time.Time
 }
 
 func (e *LocalEngineController) started() bool {
@@ -32,15 +38,56 @@ func (e *LocalEngineController) started() bool {
 // ReconcileProtection moves the guard between blocking and allowing the
 // tunnel. The helper calls it periodically; lifecycle RPCs call it directly.
 func (e *LocalEngineController) ReconcileProtection() {
+	e.protectionAccess.Lock()
+	defer e.protectionAccess.Unlock()
+	e.reconcileProtectionLocked()
+}
+
+func (e *LocalEngineController) reconcileProtectionLocked() {
 	if e.Protection == nil {
 		return
 	}
 	started := e.started()
 	tunnel := ""
 	if started {
-		tunnel = TunnelInterface(e.Protection.Config())
+		tunnel = e.tunnelInterface()
 	}
 	e.Protection.Reconcile(started, tunnel)
+}
+
+// Read the device from this instance under its lifecycle lock. A coincidentally
+// matching address on an unrelated VPN must never grant that VPN permission.
+func (e *LocalEngineController) tunnelInterface() string {
+	e.Service.lifecycleAccess.Lock()
+	defer e.Service.lifecycleAccess.Unlock()
+	instance := e.Service.Instance()
+	if instance == nil || instance.Box() == nil {
+		return ""
+	}
+	return ownedTunnelInterface(instance.Box().Inbound().Inbounds(), net.InterfaceByName)
+}
+
+func ownedTunnelInterface(inbounds []adapter.Inbound, lookup func(string) (*net.Interface, error)) string {
+	var name string
+	for _, inbound := range inbounds {
+		if inbound.Type() != "tun" {
+			continue
+		}
+		device, ok := inbound.(interface{ TunnelInterfaceName() (string, error) })
+		if !ok || name != "" {
+			return ""
+		}
+		candidate, err := device.TunnelInterfaceName()
+		if err != nil || !strings.HasPrefix(candidate, "utun") {
+			return ""
+		}
+		iface, err := lookup(candidate)
+		if err != nil || iface == nil || iface.Flags&net.FlagUp == 0 {
+			return ""
+		}
+		name = candidate
+	}
+	return name
 }
 
 func (e *LocalEngineController) StartProfile(ctx context.Context, r *LocalProfileRequest) (*emptypb.Empty, error) {
@@ -50,6 +97,8 @@ func (e *LocalEngineController) StartProfile(ctx context.Context, r *LocalProfil
 	if err := ValidateLocalProfile(r.ConfigContent); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	e.protectionAccess.Lock()
+	defer e.protectionAccess.Unlock()
 	// Never tear down a working instance for a malformed replacement.
 	if err := e.Service.CheckConfig(ctx, r.ConfigContent); err != nil {
 		return nil, err
@@ -63,7 +112,7 @@ func (e *LocalEngineController) StartProfile(ctx context.Context, r *LocalProfil
 	if e.Protection != nil {
 		// The TUN interface can appear slightly after the service reports started.
 		for attempt := 0; attempt < 20; attempt++ {
-			e.ReconcileProtection()
+			e.reconcileProtectionLocked()
 			if !e.Protection.Status().Blocking || !e.started() {
 				break
 			}
@@ -160,15 +209,17 @@ func ValidateLocalProfile(content string) error {
 	return walk(config, "")
 }
 
-// StopProfile is the only lifecycle call that disarms leak protection: the
-// user asked for the VPN to be off, so direct traffic is now intended.
+// StopProfile keeps the firewall armed. Blocking must be installed before the
+// tunnel disappears; disabling the kill switch is a separate, explicit action.
 func (e *LocalEngineController) StopProfile(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
-	closeErr := e.Service.CloseService()
+	e.protectionAccess.Lock()
+	defer e.protectionAccess.Unlock()
 	if e.Protection != nil {
 		if err := e.Protection.Stopped(); err != nil {
-			return nil, status.Error(codes.Internal, "VPN stopped, but leak protection could not be removed: "+err.Error())
+			return nil, status.Error(codes.FailedPrecondition, "VPN was not stopped because the kill switch could not block traffic: "+err.Error())
 		}
 	}
+	closeErr := e.Service.CloseService()
 	if closeErr != nil {
 		return nil, closeErr
 	}
@@ -183,13 +234,15 @@ func (e *LocalEngineController) GetLeakProtection(context.Context, *emptypb.Empt
 }
 
 func (e *LocalEngineController) SetLeakProtection(_ context.Context, r *LeakProtectionSettings) (*LeakProtectionStatus, error) {
+	e.protectionAccess.Lock()
+	defer e.protectionAccess.Unlock()
 	if e.Protection == nil {
 		return nil, status.Error(codes.Unimplemented, "leak protection is not available on this platform")
 	}
 	started := e.started()
 	tunnel := ""
 	if started {
-		tunnel = TunnelInterface(e.Protection.Config())
+		tunnel = e.tunnelInterface()
 	}
 	if err := e.Protection.Set(r.GetEnabled(), started, tunnel, ""); err != nil {
 		return nil, status.Error(codes.FailedPrecondition, err.Error())

@@ -114,6 +114,36 @@ func (t *Endpoint) WritePackets(packets [][]byte) error {
 	if !t.started.Load() {
 		return E.New("Tailscale is not ready yet")
 	}
+	if t.exitNode != "" {
+		allowed := make([][]byte, 0, len(packets))
+		for _, packet := range packets {
+			if len(packet) == 0 {
+				continue
+			}
+			var destination netip.Addr
+			switch header.IPVersion(packet) {
+			case header.IPv4Version:
+				if len(packet) < header.IPv4MinimumSize {
+					continue
+				}
+				destination = netip.AddrFrom4(header.IPv4(packet).DestinationAddress().As4())
+			case header.IPv6Version:
+				if len(packet) < header.IPv6MinimumSize {
+					continue
+				}
+				destination = netip.AddrFrom16(header.IPv6(packet).DestinationAddress().As16())
+			default:
+				continue
+			}
+			if t.allowExitDestination(destination) {
+				allowed = append(allowed, packet)
+			}
+		}
+		packets = allowed
+		if len(packets) == 0 {
+			return nil
+		}
+	}
 	unmatched, err := t.wgEngine.InputPackets(packets)
 	if err != nil || len(unmatched) == 0 {
 		return err
